@@ -21,9 +21,9 @@ def connectionLoop(sock):
       #print(str(addr) + " : " + str(data))
       if addr in clients:
          clients[addr]['lastBeat'] = datetime.now()
-         if 'message' in data and data['message'] != '':
-            print( "received from client " + str(addr) + " : " + data['message'] )
-            clients[addr]['action'].append( data['message'] )
+         if 'command' in data and data['command'] != '':
+            print( "received from client " + str(addr) + " : " + data['command'] )
+            clients[addr]['command'].append( data['command'] )
          if 'pos' in data:
              clients[addr]['pos'] = data['pos']
          if 'rotation' in data:
@@ -39,7 +39,7 @@ def connectionLoop(sock):
             clients[addr]['pos'] = pos
             clients[addr]['rotation'] = { "x" : 0, "y": 0, "z": 0, "w": 0 }
             clients[addr]['health'] = maxHealth
-            clients[addr]['action'] = []
+            clients[addr]['command'] = []
             
             for c in clients:
                if c is addr:
@@ -84,10 +84,10 @@ def gameLoop(sock):
          player['pos'] = clients[c]['pos']
          player['rotation'] = clients[c]['rotation']
          player['health'] = clients[c]['health']
-         if 'action' in clients[c] and len(clients[c]['action']) > 0:
-            action = clients[c]['action'].pop(0)
-            print( "send to client " + str(c) + " : " + action )
-            player['action'] = action
+         if 'command' in clients[c] and len(clients[c]['command']) > 0:
+            command = clients[c]['command'].pop(0)
+            print( "send to client " + str(c) + " : " + command )
+            player['command'] = command
          GameState['players'].append(player)
       s=json.dumps(GameState)
       #print("game: ", s)
