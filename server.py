@@ -9,17 +9,21 @@ import ast
 
 clients_lock = threading.Lock()
 connected = 0
+teamId = 0
 
 maxHealth = 100
 numUpdatePerSeconds = 10
 clients = {}
 
 def connectionLoop(sock):
+   global teamId
+   global maxHealth
    while True:
       data, addr = sock.recvfrom(1024)
       data = ast.literal_eval(data.decode('utf-8'))
-      #print(str(addr) + " : " + str(data))
+      
       if addr in clients:
+         # existing user
          clients[addr]['lastBeat'] = datetime.now()
          if 'command' in data and data['command'] != '':
             print( "received from client " + str(addr) + " : " + data['command'] )
@@ -30,33 +34,44 @@ def connectionLoop(sock):
             clients[addr]['rotation'] = data['rotation']
          if 'health' in data:
             clients[addr]['health'] = data['health']
+         #print(str(addr) + " : " + str(data))
       else:
+         # new user
          if 'message' in data and data['message'] == 'connect':
             clients[addr] = {}
-            clients[addr]['lastBeat'] = datetime.now()
-            clients[addr]['color'] = {"R": random.random(), "G": random.random(), "B": random.random()}
+            clients[addr]['id'] = addr
+            unitId = random.randint( 0, 10 )
+            clients[addr]['unitId'] = unitId
+            clients[addr]['teamId'] = teamId
+            teamId += 1
             pos = { "x" : random.uniform( 0.0, 5.0 ), "y": 0, "z": random.uniform( 0.0, 5.0 ) }
             clients[addr]['pos'] = pos
             clients[addr]['rotation'] = { "x" : 0, "y": 0, "z": 0, "w": 0 }
             clients[addr]['health'] = maxHealth
+            clients[addr]['lastBeat'] = datetime.now()
             clients[addr]['command'] = []
             
             for c in clients:
                if c is addr:
-                  message = {"cmd": 0,"player":{"id":str(addr),"pos":pos, "health":maxHealth}}
+                  # new user connected
+                  sendPlayerInfo( sock, addr, clients[addr], 0, c )
                else:
-                  message = {"cmd": 1,"player":{"id":str(addr),"pos":pos, "health":maxHealth}}
-               m = json.dumps(message)
-               print("new client: ", str(m), "cast to ", str(c)) 
-               sock.sendto(bytes(m,'utf8'), (c[0],c[1]))
+                  # send new client joined to the existing users
+                  sendPlayerInfo( sock, addr, clients[addr], 1, c )
                
-            # send all the data of connected clients to the newly connected client   
+            # TODO : send all players information at once
+            # send all the data of connected clients to the newly connected client 
             for c in clients:
+               # send existing users to the newly connected user
                if c is not addr:
-                  message = {"cmd": 1,"player":{"id":str(c), "pos":clients[c]['pos'], "health":clients[c]['health']}}
-                  m = json.dumps(message)
-                  print('existing client: ', str(c), 'cast to ', str(addr))
-                  sock.sendto(bytes(m,'utf8'), (addr[0],addr[1]))
+                  sendPlayerInfo( sock, c, clients[c], 1, addr )
+
+
+def sendPlayerInfo( sock, sender, player, command, receiver):
+   message = {"cmd": command, "player":{"id":str(sender), "unitId" : player['unitId'], "teamId" : player['teamId'], "pos":player['pos'], "health":player['health']}}
+   m = json.dumps(message)
+   sock.sendto( bytes(m,'utf8'), (receiver[0], receiver[1]) )
+
 
 def cleanClients(sock):
    while True:
@@ -72,16 +87,18 @@ def cleanClients(sock):
                sock.sendto(bytes(m,'utf8'), (c[0],c[1]))
       time.sleep(1)
 
+
 def gameLoop(sock):
    while True:
       GameState = {"cmd": 2, "players": []}
       clients_lock.acquire()
-      #print (clients)
+      
       for c in clients:
          player = {}
          player['id'] = str(c)
-         player['color'] = clients[c]['color']
          player['pos'] = clients[c]['pos']
+         player['unitId'] = clients[c]['unitId']
+         player['teamId'] = clients[c]['teamId']
          player['rotation'] = clients[c]['rotation']
          player['health'] = clients[c]['health']
          if 'command' in clients[c] and len(clients[c]['command']) > 0:
@@ -96,6 +113,7 @@ def gameLoop(sock):
          sock.sendto(bytes(s,'utf8'), (c[0],c[1]))
       clients_lock.release()
       time.sleep(1.0/numUpdatePerSeconds)
+
 
 def main():
    port = 12345
